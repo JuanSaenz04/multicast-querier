@@ -1,44 +1,24 @@
 //! IPv4/IGMP raw socket creation and configuration.
 
-use std::io::Error;
-use std::net::Ipv4Addr;
-use std::os::fd::AsRawFd;
-use socket2::{Domain, Protocol, Socket, SockAddr, Type};
+use std::{ffi::OsString, io::Error, os::fd::OwnedFd};
+
+use nix::sys::socket::{
+    AddressFamily, SockFlag, SockProtocol, SockType, setsockopt, socket, sockopt::{self, BindToDevice, IpMulticastTtl, Ipv4Ttl}
+};
 
 use crate::config::InterfaceConfig;
 
-pub fn create_igmp_socket(config: &InterfaceConfig) -> Result<Socket, Error> {
+pub fn create_igmp_socket(config: &InterfaceConfig) -> Result<OwnedFd, Error> {
     // Create raw socket with IGMP protocol
-    // Type::from_raw() lets us use SOCK_RAW (3) directly
-    let socket =
-        Socket::new(
-            Domain::IPV4,
-            Type::from(3),
-            Some(Protocol::from(2))
-        )?;
+    // For SOCK_RAW, we can pass None as the protocol since nix doesn't have SockProtocol::Igmp
+    // The kernel will handle IGMP packets on this raw socket
+    let fd = socket(AddressFamily::Inet, SockType::Raw, SockFlag::empty(), Some(SockProtocol::NetlinkUserSock))?;
 
-    // Bind to the specific interface by name using SO_BINDTODEVICE
-    // This is a Linux-specific socket option
-    unsafe {
-        let device_name = config.name.as_bytes();
-        let ret = libc::setsockopt(
-            socket.as_raw_fd(),
-            libc::SOL_SOCKET,
-            libc::SO_BINDTODEVICE,
-            device_name.as_ptr() as *const libc::c_void,
-            device_name.len() as libc::socklen_t,
-        );
-        if ret < 0 {
-            return Err(Error::last_os_error());
-        }
-    }
-    
-    // Bind to INADDR_ANY (0.0.0.0) on this interface
-    let addr = SockAddr::from(std::net::SocketAddrV4::new(
-        Ipv4Addr::UNSPECIFIED,
-        0
-    ));
-    socket.bind(&addr)?;
+    // Bind socket to specific network interface (SO_BINDTODEVICE)
+    setsockopt(&fd, BindToDevice, &OsString::from(&config.name))?;
 
-    Ok(socket)
+    // Set multicast interface
+    setsockopt(&fd, IpMulticastTtl, &1)?;
+
+    Ok(fd)
 }

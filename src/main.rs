@@ -1,8 +1,10 @@
-use std::net::{Ipv4Addr, SocketAddrV4};
 
-use socket2::{SockAddr, Socket};
+use std::io::Error;
+use std::os::fd::{AsRawFd, OwnedFd};
 
-use crate::config::{InterfaceConfig, IGMP_ALL_HOSTS};
+use nix::sys::socket::{MsgFlags, SockaddrIn, sendto};
+
+use crate::config::InterfaceConfig;
 use crate::packet::igmp::Igmp_packet;
 use crate::socket::igmp::create_igmp_socket;
 
@@ -24,30 +26,24 @@ fn main() {
     };
 
     // Create the IGMP socket
-    let socket = match create_igmp_socket(&config) {
-        Ok(sock) => sock,
+    let fd = match create_igmp_socket(&config) {
+        Ok(sock_fd) => sock_fd,
         Err(e) => {
             eprintln!("Failed to create IGMP socket: {}", e);
             return;
         }
     };
 
-    // Send a test packet
-    match send_igmp_packet(&socket) {
-        Ok(_) => println!("IGMP packet sent successfully!"),
-        Err(e) => eprintln!("Failed to send IGMP packet: {}", e),
-    }
+    match send_igmp_packet(&fd) {
+        Ok(_) => println!("Query sent successfully"),
+        Err(e) => eprintln!("Failed to sent IGMP packet: {}", e)
+    };
 }
 
-fn send_igmp_packet(socket: &Socket) -> std::io::Result<usize> {
+fn send_igmp_packet(fd: &OwnedFd) -> Result<(), Error> {
     let igmp_packet = Igmp_packet::New();
 
-    // Convert 224.0.0.1 to SockAddr
-    let dest_addr = SocketAddrV4::new(
-        Ipv4Addr::new(IGMP_ALL_HOSTS[0], IGMP_ALL_HOSTS[1], IGMP_ALL_HOSTS[2], IGMP_ALL_HOSTS[3]),
-        0
-    );
-    let sock_addr = SockAddr::from(dest_addr);
+    sendto(fd.as_raw_fd(), &igmp_packet.serialize(), &SockaddrIn::new(224, 0, 0, 1, 0), MsgFlags::empty())?;
 
-    socket.send_to(&igmp_packet.serialize(), &sock_addr)
+    Ok(())
 }

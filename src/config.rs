@@ -2,8 +2,6 @@
 
 use std::time::Duration;
 
-use socket2::Socket;
-
 /// How often to send general queries (125 seconds per IGMPv3/MLDv2 spec)
 pub const QUERY_INTERVAL: Duration = Duration::from_secs(125);
 
