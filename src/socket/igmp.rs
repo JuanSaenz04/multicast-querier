@@ -3,7 +3,7 @@
 use std::{ffi::OsString, io::Error, os::fd::OwnedFd};
 
 use nix::sys::socket::{
-    AddressFamily, SockFlag, SockProtocol, SockType, setsockopt, socket, sockopt::{self, BindToDevice, IpMulticastTtl, Ipv4Ttl}
+    AddressFamily, SockFlag, SockProtocol, SockType, setsockopt, socket, sockopt::{BindToDevice, IpMulticastTtl}
 };
 
 use crate::config::InterfaceConfig;

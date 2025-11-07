@@ -1,12 +1,16 @@
 
 use std::io::Error;
+use std::net::{Ipv6Addr, SocketAddrV6};
 use std::os::fd::{AsRawFd, OwnedFd};
 
-use nix::sys::socket::{MsgFlags, SockaddrIn, sendto};
+use nix::sys::socket::{MsgFlags, SockaddrIn, SockaddrIn6, sendto};
+use nix::unistd::close;
 
-use crate::config::InterfaceConfig;
-use crate::packet::igmp::Igmp_packet;
+use crate::config::{InterfaceConfig, MLD_ALL_NODES};
+use crate::packet::igmp::IgmpPacket;
+use crate::packet::mld::MldQueryPacket;
 use crate::socket::igmp::create_igmp_socket;
+use crate::socket::mld::create_mld_socket;
 
 mod packet;
 mod socket;
@@ -35,15 +39,48 @@ fn main() {
     };
 
     match send_igmp_packet(&fd) {
-        Ok(_) => println!("Query sent successfully"),
+        Ok(_) => println!("IGMP query sent successfully"),
         Err(e) => eprintln!("Failed to sent IGMP packet: {}", e)
+    };
+
+    // Create the MLDv2 socket
+    let fd6 = match create_mld_socket(&config) {
+        Ok(sock_fd) => sock_fd,
+        Err(e) => {
+            eprintln!("Failed to create MLDv2 socket: {}", e);
+            return;
+        }
+    };
+
+    match send_mld_packet(&fd6) {
+        Ok(_) => println!("MLDv2 query sent successfully"),
+        Err(e) => eprintln!("Failed to sent MLDv2 packet: {}", e)
     };
 }
 
 fn send_igmp_packet(fd: &OwnedFd) -> Result<(), Error> {
-    let igmp_packet = Igmp_packet::New();
+    let igmp_packet = IgmpPacket::new();
 
     sendto(fd.as_raw_fd(), &igmp_packet.serialize(), &SockaddrIn::new(224, 0, 0, 1, 0), MsgFlags::empty())?;
+
+    Ok(())
+}
+
+fn send_mld_packet(fd: &OwnedFd) -> Result<(), Error> {
+    let mut mld_packet = MldQueryPacket::new();
+
+    let src: [u8; 16] = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]; // Unspecified source
+    let dst: [u8; 16] = MLD_ALL_NODES;
+
+    // Calculate and set checksum
+    mld_packet.calculate_checksum(&src, &dst);
+
+    // Create IPv6 destination address (ff02::1, port 0)
+    let ipv6_addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 1);
+    let socket_addr = SocketAddrV6::new(ipv6_addr, 0, 0, 0);
+    let dest_addr = SockaddrIn6::from(socket_addr);
+
+    sendto(fd.as_raw_fd(), &mld_packet.serialize(), &dest_addr, MsgFlags::empty())?;
 
     Ok(())
 }

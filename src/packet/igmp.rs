@@ -1,8 +1,7 @@
 //! IGMPv3 packet parsing and construction.
 
-use crate::packet;
 
-pub struct Igmp_packet {
+pub struct IgmpPacket {
     igmp_type: u8,
     max_resp_code: u8,
     checksum: u16,
@@ -35,9 +34,9 @@ fn calculate_checksum(data: &[u8]) -> u16 {
     !sum as u16
 }
 
-impl Igmp_packet {
-    pub fn New() -> Igmp_packet {
-        let mut packet = Igmp_packet {
+impl IgmpPacket {
+    pub fn new() -> IgmpPacket {
+        let mut packet = IgmpPacket {
             igmp_type: 0x11,          // Membership Query
             max_resp_code: 100,       // 10 seconds (in 1/10th second units)
             group_address: 0,         // 0.0.0.0 = general query
