@@ -19,6 +19,8 @@ pub fn create_mld_socket(config: &InterfaceConfig) -> Result<OwnedFd, Error> {
     
     setsockopt(&fd, Ipv6MulticastHops, &1)?;
 
+    setsockopt(&fd, ReceiveTimeout, &TimeVal::new(1, 0))?;
+
     let hop_opts: &[u8] = &[
       58,   // Next Header: ICMPv6
       0,    // Hdr Ext Len: 0 (8 bytes total)

@@ -58,14 +58,6 @@ fn main() {
     };
 }
 
-fn send_igmp_packet(fd: &OwnedFd) -> Result<(), Error> {
-    let igmp_packet = IgmpPacket::new();
-
-    sendto(fd.as_raw_fd(), &igmp_packet.serialize(), &SockaddrIn::new(224, 0, 0, 1, 0), MsgFlags::empty())?;
-
-    Ok(())
-}
-
 fn send_mld_packet(fd: &OwnedFd) -> Result<(), Error> {
     let mut mld_packet = MldQueryPacket::new();
 

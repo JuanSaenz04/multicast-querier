@@ -1,22 +1,29 @@
 //! Querier state machine and election logic.
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::io::Error;
+use std::net::Ipv4Addr;
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::time::Instant;
+
+use nix::sys::socket::{MsgFlags, SockaddrIn, recv, sendto};
+
+use crate::config::QUERY_INTERVAL;
+use crate::packet::igmp::{IgmpPacket, get_ip4_from_query};
 
 /// State for managing querier election and query scheduling
 #[derive(Debug)]
-pub struct QuerierState {
-    /// Our own IP address on this interface
-    local_ip: IpAddr,
+pub struct QuerierV4State {
+    /// Our local IP on the interface
+    local_ip: Ipv4Addr,
     /// Whether we currently believe we are the querier
     am_i_the_querier: bool,
     /// Last time we sent a general query
     last_query_sent: Option<Instant>,
 }
 
-impl QuerierState {
+impl QuerierV4State {
     /// Creates a new querier state for the given local IP address
-    pub fn new(local_ip: IpAddr) -> Self {
+    pub fn new(local_ip: Ipv4Addr) -> Self {
         Self {
             local_ip,
             am_i_the_querier: true, // Assume we're the querier initially
@@ -27,20 +34,24 @@ impl QuerierState {
     /// Handles receiving a query from another querier
     ///
     /// Returns true if we should back off (other querier has lower IP)
-    pub fn handle_received_query(&mut self, source_ip: IpAddr) -> bool {
-        // TODO: Implement IP comparison logic
-        // If source_ip < our local_ip, we should back off
-        // Update am_i_the_querier accordingly
-        todo!("Implement querier election logic")
+    pub fn handle_received_query(&mut self, query_data: &[u8]) {
+        
+        let src_ip = get_ip4_from_query(query_data);
+
+        if let Some(ip) = src_ip {
+            if ip < self.local_ip {
+                self.am_i_the_querier = false;
+            }
+        }
     }
 
     /// Checks if it's time to send a query
     ///
     /// Returns true if we are the querier and enough time has elapsed
     pub fn should_send_query(&self) -> bool {
-        // TODO: Check if am_i_the_querier is true
-        // TODO: Check if last_query_sent is None or elapsed >= QUERY_INTERVAL
-        todo!("Implement query timing logic")
+        let time_has_passed = self.last_query_sent.is_some_and(|t| t.elapsed() >= QUERY_INTERVAL);
+
+        time_has_passed && self.am_i_the_querier
     }
 
     /// Marks that we just sent a query
@@ -48,18 +59,26 @@ impl QuerierState {
         self.last_query_sent = Some(Instant::now());
     }
 
-    /// Returns whether we currently believe we are the querier
-    pub fn am_i_querier(&self) -> bool {
-        self.am_i_the_querier
+    pub fn start(&mut self, fd: &OwnedFd) {
+        loop {
+            let mut buffer = Vec::new();
+            recv(fd.as_raw_fd(), &mut buffer, MsgFlags::empty())
+                .inspect(|_| self.handle_received_query(&buffer));
+
+            if self.should_send_query() {
+                match send_igmp_packet(fd) {
+                    Ok(_) => self.mark_query_sent(),
+                    Err(e) => eprintln!("Failed to send IGMP query: {}", e)
+                }
+            }
+        }
     }
 }
 
-/// Creates a new IPv4 querier state
-pub fn new_ipv4_querier(local_ip: Ipv4Addr) -> QuerierState {
-    QuerierState::new(IpAddr::V4(local_ip))
-}
+fn send_igmp_packet(fd: &OwnedFd) -> Result<(), Error> {
+    let igmp_packet = IgmpPacket::new();
 
-/// Creates a new IPv6 querier state
-pub fn new_ipv6_querier(local_ip: Ipv6Addr) -> QuerierState {
-    QuerierState::new(IpAddr::V6(local_ip))
+    sendto(fd.as_raw_fd(), &igmp_packet.serialize(), &SockaddrIn::new(224, 0, 0, 1, 0), MsgFlags::empty())?;
+
+    Ok(())
 }
