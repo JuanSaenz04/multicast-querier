@@ -7,10 +7,12 @@ use std::{error::Error, net::{Ipv4Addr, Ipv6Addr}, sync::{atomic::AtomicBool, Ar
 
 /// Main function executed for each interface
 pub fn run_interface_thread(interface_name: String, running: Arc<AtomicBool>) -> Result<Vec<thread::JoinHandle<()>>, Box<dyn Error>> {
+    println!("Starting on interface: {}", interface_name);
+
     let config = create_interface_config(interface_name)?;
     let mut handles = Vec::new();
 
-    println!("Starting interface thread for: {}", config.name);
+    println!("Found IPs: {:?} {:?}", config.ipv4_addresses, config.ipv6_addresses);
 
     if config.enable_igmp {
         let fd4 = create_igmp_socket(&config)?;
@@ -21,6 +23,8 @@ pub fn run_interface_thread(interface_name: String, running: Arc<AtomicBool>) ->
             v4_querier.start(&fd4, running_clone)
         });
         handles.push(v4_handle);
+
+        println!("IGMP querier started on: {}", config.name);
     }
 
     if config.enable_mld {
@@ -32,6 +36,8 @@ pub fn run_interface_thread(interface_name: String, running: Arc<AtomicBool>) ->
             v6_querier.start(&fd6, running)
         });
         handles.push(v6_handle);
+
+        println!("MLD querier started on: {}", config.name);
     }
 
     Ok(handles)

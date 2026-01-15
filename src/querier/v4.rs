@@ -41,7 +41,11 @@ impl QuerierV4State {
         let src_ip = get_ip4_from_query(query_data);
 
         if let Some(ip) = src_ip {
+            println!("Received query from {}", ip);
             if ip < self.local_ip {
+                if self.am_i_the_querier {
+                    println!("Lower IP querier detected, backing off...")
+                }
                 self.am_i_the_querier = false;
             }
         }
@@ -51,7 +55,7 @@ impl QuerierV4State {
     ///
     /// Returns true if we are the querier and enough time has elapsed
     pub fn should_send_query(&self) -> bool {
-        let time_has_passed = self.last_query_sent.is_some_and(|t| t.elapsed() >= QUERY_INTERVAL);
+        let time_has_passed = self.last_query_sent.map_or(true, |t| t.elapsed() >= QUERY_INTERVAL);
 
         time_has_passed && self.am_i_the_querier
     }

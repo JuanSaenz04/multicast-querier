@@ -33,7 +33,22 @@ pub fn create_mld_socket(config: &InterfaceConfig) -> Result<OwnedFd, Error> {
     ];
 
     unsafe {
-        use libc::{ setsockopt, IPPROTO_IPV6, IPV6_HOPOPTS, c_void, socklen_t };
+        use libc::{ setsockopt, IPPROTO_IPV6, IPV6_HOPOPTS, IPV6_MULTICAST_LOOP, c_void, socklen_t, c_int };
+        
+        // Disable Multicast Loopback
+        let loopback: c_int = 0;
+        let ret_loop = setsockopt(
+            fd.as_raw_fd(),
+            IPPROTO_IPV6,
+            IPV6_MULTICAST_LOOP,
+            &loopback as *const c_int as *const c_void,
+            std::mem::size_of::<c_int>() as socklen_t,
+        );
+
+        if ret_loop < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
         let ret = setsockopt(
             fd.as_raw_fd(),
             IPPROTO_IPV6,
