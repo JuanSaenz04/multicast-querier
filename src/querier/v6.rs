@@ -40,7 +40,7 @@ impl QuerierV6State {
         println!("Received query from {}", src_ip);
         if src_ip < self.local_ip {
             if self.am_i_the_querier {
-                println!("Lower IP querier detected, backing off...");
+                println!("Lower IPv6 querier detected, backing off...");
             }
             self.am_i_the_querier = false;
         }
