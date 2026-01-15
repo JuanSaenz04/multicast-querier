@@ -58,7 +58,10 @@ fn create_interface_config(interface_name: String) -> Result<InterfaceConfig, Bo
                     ipv4_addrs.push(Ipv4Addr::from(inet4.ip()));
                 }
                 else if let Some(inet6) = sock_addr.as_sockaddr_in6() {
-                    ipv6_addrs.push(Ipv6Addr::from(inet6.ip()));
+                    let ip = Ipv6Addr::from(inet6.ip());
+                    if ip.is_unicast_link_local() {
+                        ipv6_addrs.push(ip);
+                    }
                 }
             }
         }
