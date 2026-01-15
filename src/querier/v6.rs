@@ -7,10 +7,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use nix::sys::socket::{MsgFlags, SockaddrIn6, recv, sendto};
+use nix::sys::socket::{MsgFlags, SockaddrIn6, recvfrom, sendto};
 
 use crate::config::{MLD_ALL_NODES, QUERY_INTERVAL};
-use crate::packet::mld::{MldQueryPacket, get_ip6_from_query};
+use crate::packet::mld::MldQueryPacket;
 
 /// State for managing querier election and query scheduling
 #[derive(Debug)]
@@ -36,18 +36,13 @@ impl QuerierV6State {
     /// Handles receiving a query from another querier
     ///
     /// Returns true if we should back off (other querier has lower IP)
-    pub fn handle_received_query(&mut self, query_data: &[u8]) {
-        
-        let src_ip = get_ip6_from_query(query_data);
-
-        if let Some(ip) = src_ip {
-            println!("Received query from {}", ip);
-            if ip < self.local_ip {
-                if self.am_i_the_querier {
-                    println!("Lower IP querier detected, backing off...");
-                }
-                self.am_i_the_querier = false;
+    pub fn handle_received_query(&mut self, src_ip: Ipv6Addr) {
+        println!("Received query from {}", src_ip);
+        if src_ip < self.local_ip {
+            if self.am_i_the_querier {
+                println!("Lower IP querier detected, backing off...");
             }
+            self.am_i_the_querier = false;
         }
     }
 
@@ -68,8 +63,15 @@ impl QuerierV6State {
     pub fn start(&mut self, fd: &OwnedFd, running: Arc<AtomicBool>) {
         let mut buffer = [0u8; 1500];
         while running.load(Ordering::SeqCst) {
-            match recv(fd.as_raw_fd(), &mut buffer, MsgFlags::empty()) {
-                Ok(n) => self.handle_received_query(&buffer[..n]),
+            match recvfrom::<SockaddrIn6>(fd.as_raw_fd(), &mut buffer) {
+                Ok((n, Some(src_addr))) => {
+                    // Check if ICMPv6 type is 130 (Multicast Listener Query)
+                    // The kernel strips IPv6 headers, so buffer[0] is the ICMPv6 type
+                    if n > 0 && buffer[0] == 130 {
+                        self.handle_received_query(src_addr.ip());
+                    }
+                }
+                Ok((_, None)) => {}
                 Err(nix::errno::Errno::EAGAIN) => {}
                 Err(e) => eprintln!("Failed to receive packet: {}", e),
             }
