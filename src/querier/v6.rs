@@ -60,15 +60,18 @@ impl QuerierV6State {
     }
 
     pub fn start(&mut self, fd: &OwnedFd) {
+        let mut buffer = [0u8; 1500];
         loop {
-            let mut buffer = Vec::new();
-            recv(fd.as_raw_fd(), &mut buffer, MsgFlags::empty())
-                .inspect(|_| self.handle_received_query(&buffer));
+            match recv(fd.as_raw_fd(), &mut buffer, MsgFlags::empty()) {
+                Ok(n) => self.handle_received_query(&buffer[..n]),
+                Err(nix::errno::Errno::EAGAIN) => {}
+                Err(e) => eprintln!("Failed to receive packet: {}", e),
+            }
 
             if self.should_send_query() {
                 match send_mld_packet(fd) {
                     Ok(_) => self.mark_query_sent(),
-                    Err(e) => eprintln!("Failed to send IGMP query: {}", e)
+                    Err(e) => eprintln!("Failed to send MLD query: {}", e)
                 }
             }
         }
