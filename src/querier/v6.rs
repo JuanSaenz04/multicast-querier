@@ -3,6 +3,8 @@
 use std::io::Error;
 use std::net::{Ipv6Addr, SocketAddrV6};
 use std::os::fd::{AsRawFd, OwnedFd};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 use nix::sys::socket::{MsgFlags, SockaddrIn6, recv, sendto};
@@ -59,9 +61,9 @@ impl QuerierV6State {
         self.last_query_sent = Some(Instant::now());
     }
 
-    pub fn start(&mut self, fd: &OwnedFd) {
+    pub fn start(&mut self, fd: &OwnedFd, running: Arc<AtomicBool>) {
         let mut buffer = [0u8; 1500];
-        loop {
+        while running.load(Ordering::SeqCst) {
             match recv(fd.as_raw_fd(), &mut buffer, MsgFlags::empty()) {
                 Ok(n) => self.handle_received_query(&buffer[..n]),
                 Err(nix::errno::Errno::EAGAIN) => {}

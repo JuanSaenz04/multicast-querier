@@ -3,29 +3,24 @@
 use nix::ifaddrs::getifaddrs;
 
 use crate::{config::InterfaceConfig, querier, socket::{igmp::create_igmp_socket, mld::create_mld_socket}};
-use std::{error::Error, net::{Ipv4Addr, Ipv6Addr}, thread::{self}};
+use std::{error::Error, net::{Ipv4Addr, Ipv6Addr}, sync::{atomic::AtomicBool, Arc}, thread::{self}};
 
-/// Main function executed by each interface thread
-///
-pub fn run_interface_thread(interface_name: String) -> Result<(), Box<dyn Error>> {
+/// Main function executed for each interface
+pub fn run_interface_thread(interface_name: String, running: Arc<AtomicBool>) -> Result<Vec<thread::JoinHandle<()>>, Box<dyn Error>> {
     let config = create_interface_config(interface_name)?;
+    let mut handles = Vec::new();
 
     println!("Starting interface thread for: {}", config.name);
-
-    // TODO: Determine local IP address for this interface
-    // TODO: Create IGMP socket (if config.enable_igmp)
-    // TODO: Create MLD socket (if config.enable_mld)
-    // TODO: Initialize QuerierState for IPv4 and/or IPv6
-    // TODO: Set socket read timeout to SOCKET_TIMEOUT
 
     if config.enable_igmp {
         let fd4 = create_igmp_socket(&config)?;
 
         let mut v4_querier = querier::v4::QuerierV4State::new(config.ipv4_addresses[0]);
-
+        let running_clone = running.clone();
         let v4_handle = thread::spawn(move || {
-            v4_querier.start(&fd4)
+            v4_querier.start(&fd4, running_clone)
         });
+        handles.push(v4_handle);
     }
 
     if config.enable_mld {
@@ -34,15 +29,16 @@ pub fn run_interface_thread(interface_name: String) -> Result<(), Box<dyn Error>
         let mut v6_querier = querier::v6::QuerierV6State::new(config.ipv6_addresses[0]);
 
         let v6_handle = thread::spawn(move || {
-            v6_querier.start(&fd6);
+            v6_querier.start(&fd6, running)
         });
+        handles.push(v6_handle);
     }
 
-    Ok(())
+    Ok(handles)
 
-    // Unreachable in normal operation
 }
 
+/// Creates the interface configuration struct based on the interface name
 fn create_interface_config(interface_name: String) -> Result<InterfaceConfig, Box<dyn Error>> {
     let ifaddrs = getifaddrs()?;
 
