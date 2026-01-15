@@ -1,5 +1,7 @@
 //! MLDv2 packet parsing and construction.
 
+use std::net::Ipv6Addr;
+
 pub struct MldQueryPacket {
     message_type: u8,
     code: u8,
@@ -99,4 +101,9 @@ impl MldQueryPacket {
 
         buffer
     }
+}
+
+pub fn get_ip6_from_query(data: &[u8]) -> Option<Ipv6Addr> {
+    // TODO
+    None
 }

@@ -2,7 +2,7 @@
 
 use std::{ffi::OsString, io::Error, os::fd::{AsRawFd, OwnedFd}};
 
-use nix::sys::socket::{AddressFamily, SockFlag, SockProtocol, SockType, setsockopt, socket, sockopt::{BindToDevice, Ipv6MulticastHops}, };
+use nix::sys::{socket::{AddressFamily, SockFlag, SockProtocol, SockType, setsockopt, socket, sockopt::{BindToDevice, Ipv6MulticastHops, ReceiveTimeout}, }, time::TimeVal};
 
 use crate::config::InterfaceConfig;
 
