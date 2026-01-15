@@ -5,6 +5,9 @@ use std::{net::{Ipv4Addr, Ipv6Addr}, time::Duration};
 /// How often to send general queries (125 seconds per IGMPv3/MLDv2 spec)
 pub const QUERY_INTERVAL: Duration = Duration::from_secs(125);
 
+/// Time to wait before taking over as querier again if no other queries are seen (approx 255s)
+pub const OTHER_QUERIER_PRESENT_INTERVAL: Duration = Duration::from_secs(255);
+
 /// MLD All-Nodes multicast address (ff02::1)
 pub const MLD_ALL_NODES: [u8; 16] = [
     0xff, 0x02, 0, 0, 0, 0, 0, 0,

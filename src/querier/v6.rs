@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use nix::sys::socket::{MsgFlags, SockaddrIn6, recvfrom, sendto};
 
-use crate::config::{MLD_ALL_NODES, QUERY_INTERVAL};
+use crate::config::{MLD_ALL_NODES, OTHER_QUERIER_PRESENT_INTERVAL, QUERY_INTERVAL};
 use crate::packet::mld::MldQueryPacket;
 
 /// State for managing querier election and query scheduling
@@ -21,6 +21,8 @@ pub struct QuerierV6State {
     am_i_the_querier: bool,
     /// Last time we sent a general query
     last_query_sent: Option<Instant>,
+    /// Last time we saw a query from another router
+    last_other_query_received: Option<Instant>,
 }
 
 impl QuerierV6State {
@@ -30,6 +32,7 @@ impl QuerierV6State {
             local_ip,
             am_i_the_querier: true, // Assume we're the querier initially
             last_query_sent: None,
+            last_other_query_received: None,
         }
     }
 
@@ -43,13 +46,26 @@ impl QuerierV6State {
                 println!("Lower IPv6 querier detected, backing off...");
             }
             self.am_i_the_querier = false;
+            self.last_other_query_received = Some(Instant::now());
         }
     }
 
     /// Checks if it's time to send a query
     ///
     /// Returns true if we are the querier and enough time has elapsed
-    pub fn should_send_query(&self) -> bool {
+    pub fn should_send_query(&mut self) -> bool {
+        // Check if we should resume being the querier
+        if !self.am_i_the_querier {
+            if let Some(last_seen) = self.last_other_query_received {
+                if last_seen.elapsed() > OTHER_QUERIER_PRESENT_INTERVAL {
+                    println!("No other IPv6 querier seen for {:?}. Resuming querier role.", OTHER_QUERIER_PRESENT_INTERVAL);
+                    self.am_i_the_querier = true;
+                    // Reset last_query_sent so we send one immediately
+                    self.last_query_sent = None; 
+                }
+            }
+        }
+
         let time_has_passed = self.last_query_sent.map_or(true, |t| t.elapsed() >= QUERY_INTERVAL);
 
         time_has_passed && self.am_i_the_querier
