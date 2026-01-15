@@ -104,6 +104,140 @@ impl MldQueryPacket {
 }
 
 pub fn get_ip6_from_query(data: &[u8]) -> Option<Ipv6Addr> {
-    // TODO
+    if data.len() < 40 {
+        return None;
+    }
+
+    // Check IP version (should be 6)
+    let version = (data[0] >> 4) & 0x0F;
+    if version != 6 {
+        return None;
+    }
+
+    // Extract Source IP (bytes 8-24)
+    let mut src_bytes = [0u8; 16];
+    src_bytes.copy_from_slice(&data[8..24]);
+    let src_ip = Ipv6Addr::from(src_bytes);
+
+    let mut next_header = data[6];
+    let mut current_offset = 40;
+
+    // Traverse extension headers to find ICMPv6
+    // We limit the loop to avoid infinite loops with malformed packets
+    for _ in 0..10 {
+        if current_offset >= data.len() {
+            return None;
+        }
+
+        if next_header == 58 { // ICMPv6
+            if current_offset + 1 > data.len() {
+                return None;
+            }
+            // Check if it is a Multicast Listener Query (Type 130)
+            if data[current_offset] == 130 {
+                return Some(src_ip);
+            }
+            return None;
+        }
+
+        // Handle generic extension headers (Hop-by-Hop: 0, Routing: 43, DestOpts: 60)
+        // These headers share the same structure: [NextHeader, HdrExtLen, ...data]
+        match next_header {
+            0 | 43 | 60 => {
+                if current_offset + 2 > data.len() {
+                    return None;
+                }
+                next_header = data[current_offset];
+                // HdrExtLen is in 8-octet units, not including the first 8 octets
+                let len = (data[current_offset + 1] as usize + 1) * 8;
+                current_offset += len;
+            }
+            _ => return None, // Unknown or unhandled next header
+        }
+    }
+
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_ip6_from_query_with_hbh() {
+        let mut packet = Vec::new();
+
+        // IPv6 Header
+        // Version 6, Traffic Class 0, Flow Label 0
+        packet.extend_from_slice(&[0x60, 0x00, 0x00, 0x00]);
+        // Payload Length (will be set later, just placeholder)
+        packet.extend_from_slice(&[0x00, 0x00]);
+        // Next Header: 0 (Hop-by-Hop Options)
+        packet.push(0);
+        // Hop Limit
+        packet.push(1);
+        // Source IP: fe80::1
+        packet.extend_from_slice(&[0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+        // Dest IP: ff02::1 (All Nodes)
+        packet.extend_from_slice(&[0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+
+        // Hop-by-Hop Options Header
+        // Next Header: 58 (ICMPv6)
+        packet.push(58);
+        // Hdr Ext Len: 0 ( (0 + 1) * 8 = 8 bytes total length)
+        packet.push(0);
+        // Padding (6 bytes to make it 8 bytes aligned)
+        packet.extend_from_slice(&[0; 6]);
+
+        // ICMPv6 MLD Query
+        // Type: 130 (Multicast Listener Query)
+        packet.push(130);
+        // Code: 0
+        packet.push(0);
+        // Checksum (placeholder)
+        packet.extend_from_slice(&[0, 0]);
+        // Max Resp Code
+        packet.extend_from_slice(&[0, 0]);
+        // Reserved
+        packet.extend_from_slice(&[0, 0]);
+        // Multicast Address (::)
+        packet.extend_from_slice(&[0; 16]);
+        // Resv/S/QRV
+        packet.push(0);
+        // QQIC
+        packet.push(0);
+        // Num Sources
+        packet.extend_from_slice(&[0, 0]);
+
+        let result = get_ip6_from_query(&packet);
+        assert_eq!(result, Some("fe80::1".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_get_ip6_from_query_not_a_query() {
+        let mut packet = Vec::new();
+
+        // IPv6 Header
+        packet.extend_from_slice(&[0x60, 0x00, 0x00, 0x00]); // Version 6
+        packet.extend_from_slice(&[0x00, 0x00]); // Payload Length
+        packet.push(0); // Next Header: 0 (Hop-by-Hop Options)
+        packet.push(1); // Hop Limit
+        packet.extend_from_slice(&[0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]); // Source IP
+        packet.extend_from_slice(&[0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]); // Dest IP
+
+        // Hop-by-Hop Options Header
+        packet.push(58); // Next Header: 58 (ICMPv6)
+        packet.push(0); // Hdr Ext Len: 0 (8 bytes)
+        packet.extend_from_slice(&[0; 6]); // Padding
+
+        // ICMPv6 Echo Request (Not a query)
+        packet.push(128); // Type: 128 (Echo Request)
+        packet.push(0); // Code: 0
+        packet.extend_from_slice(&[0, 0]); // Checksum
+        packet.extend_from_slice(&[0, 0]); // ID
+        packet.extend_from_slice(&[0, 0]); // Sequence
+
+        let result = get_ip6_from_query(&packet);
+        assert_eq!(result, None);
+    }
 }

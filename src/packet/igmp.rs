@@ -107,3 +107,81 @@ pub fn get_ip4_from_query(data: &[u8]) -> Option<Ipv4Addr> {
 
     Some(src_ip)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_ip4_from_query_valid() {
+        let mut packet = Vec::new();
+
+        // IP Header
+        // Version 4, IHL 5
+        packet.push(0x45);
+        // TOS
+        packet.push(0);
+        // Total Length (placeholder)
+        packet.extend_from_slice(&[0, 0]);
+        // ID
+        packet.extend_from_slice(&[0, 0]);
+        // Flags/Fragment Offset
+        packet.extend_from_slice(&[0, 0]);
+        // TTL
+        packet.push(1);
+        // Protocol: 2 (IGMP)
+        packet.push(2);
+        // Header Checksum (placeholder)
+        packet.extend_from_slice(&[0, 0]);
+        // Source IP: 192.168.1.50
+        packet.extend_from_slice(&[192, 168, 1, 50]);
+        // Dest IP: 224.0.0.1
+        packet.extend_from_slice(&[224, 0, 0, 1]);
+
+        // IGMPv3 Query
+        // Type: 0x11 (Membership Query)
+        packet.push(0x11);
+        // Max Resp Code
+        packet.push(100);
+        // Checksum
+        packet.extend_from_slice(&[0, 0]);
+        // Group Address (0.0.0.0)
+        packet.extend_from_slice(&[0, 0, 0, 0]);
+        // Resv/S/QRV
+        packet.push(0);
+        // QQIC
+        packet.push(0);
+        // Num Sources
+        packet.extend_from_slice(&[0, 0]);
+
+        let result = get_ip4_from_query(&packet);
+        assert_eq!(result, Some("192.168.1.50".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_get_ip4_from_query_invalid_type() {
+        let mut packet = Vec::new();
+
+        // IP Header
+        packet.push(0x45); // Version 4, IHL 5
+        packet.push(0); // TOS
+        packet.extend_from_slice(&[0, 0]); // Total Length
+        packet.extend_from_slice(&[0, 0]); // ID
+        packet.extend_from_slice(&[0, 0]); // Flags/Fragment Offset
+        packet.push(1); // TTL
+        packet.push(2); // Protocol: 2 (IGMP)
+        packet.extend_from_slice(&[0, 0]); // Header Checksum
+        packet.extend_from_slice(&[192, 168, 1, 50]); // Source IP
+        packet.extend_from_slice(&[224, 0, 0, 22]); // Dest IP (IGMPv3 Report)
+
+        // IGMPv3 Membership Report (Type 0x22) - NOT a query (0x11)
+        packet.push(0x22); // Type: 0x22 (v3 Membership Report)
+        packet.push(0); // Reserved
+        packet.extend_from_slice(&[0, 0]); // Checksum
+        packet.extend_from_slice(&[0, 0]); // Reserved
+        packet.extend_from_slice(&[0, 0]); // Number of Group Records
+
+        let result = get_ip4_from_query(&packet);
+        assert_eq!(result, None);
+    }
+}
