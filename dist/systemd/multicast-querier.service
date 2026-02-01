@@ -1,0 +1,19 @@
+[Unit]
+Description=Multicast Querier Service (IGMPv3/MLDv2)
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The binary path. Change if you install it elsewhere.
+ExecStart=/usr/local/bin/multicast-querier $INTERFACES
+# Load interfaces from this file
+EnvironmentFile=/etc/default/multicast-querier
+# Restart automatically if it crashes
+Restart=on-failure
+RestartSec=5
+# Root privileges are required for raw sockets
+User=root
+
+[Install]
+WantedBy=multi-user.target
