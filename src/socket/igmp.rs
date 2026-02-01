@@ -20,8 +20,8 @@ pub fn create_igmp_socket(config: &InterfaceConfig) -> Result<OwnedFd, Error> {
     // Set multicast interface
     setsockopt(&fd, IpMulticastTtl, &1)?;
 
-    // Disable multicast loopback to avoid receiving our own queries
-    setsockopt(&fd, IpMulticastLoop, &false)?;
+    // Enable multicast loopback so we can hear our own queries
+    setsockopt(&fd, IpMulticastLoop, &true)?;
 
     // Set recieve timeout to 1 second
     setsockopt(&fd, ReceiveTimeout, &TimeVal::new(1, 0))?;

@@ -40,6 +40,10 @@ impl QuerierV6State {
     ///
     /// Returns true if we should back off (other querier has lower IP)
     pub fn handle_received_query(&mut self, src_ip: Ipv6Addr) {
+        if src_ip == self.local_ip {
+            return;
+        }
+
         println!("Received query from {}", src_ip);
         if src_ip < self.local_ip {
             if self.am_i_the_querier {

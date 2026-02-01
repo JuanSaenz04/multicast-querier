@@ -35,8 +35,8 @@ pub fn create_mld_socket(config: &InterfaceConfig) -> Result<OwnedFd, Error> {
     unsafe {
         use libc::{ setsockopt, IPPROTO_IPV6, IPV6_HOPOPTS, IPV6_MULTICAST_LOOP, c_void, socklen_t, c_int };
         
-        // Disable Multicast Loopback
-        let loopback: c_int = 0;
+        // Enable Multicast Loopback
+        let loopback: c_int = 1;
         let ret_loop = setsockopt(
             fd.as_raw_fd(),
             IPPROTO_IPV6,
