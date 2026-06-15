@@ -44,6 +44,10 @@ impl QuerierV4State {
         let src_ip = get_ip4_from_query(query_data);
 
         if let Some(ip) = src_ip {
+            if ip == Ipv4Addr::UNSPECIFIED {
+                return;
+            }
+            
             if ip == self.local_ip {
                 return;
             }
